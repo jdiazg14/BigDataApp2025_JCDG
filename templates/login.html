@@ -48,7 +48,7 @@
                 
                 <div class="text-center">
                     <button type="submit" class="btn btn-primary">Ingresar</button>
-                    <button type="button" class="btn btn-info" onclick="listarUsuarios()">Listar usuarios</button>
+                    <button type="button" class="btn btn-info" onclick="listarUsuarios()">Listar usuarios</button>                    
                 </div>
             </form>
         </div>
@@ -60,8 +60,10 @@
                         <tr>
                             <th>Usuario</th>
                             <th>Password</th>
-                            <th>Rol</th>
-                            <th>Fecha de Creación</th>
+                            <th>Login</th>
+                            <th>Admin Usuarios</th>
+                            <th>Admin Elastic</th>
+                            <th>Admin Data Elastic</th>
                         </tr>
                     </thead>
                     <tbody id="tablaUsuarios">
@@ -105,16 +107,36 @@
                     const contenedor = document.getElementById('ListadoUsuarios');
                     
                     tablaUsuarios.innerHTML = '';
-                    data.forEach(usuario => {
+                    
+                    if (data.length === 0) {
                         const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${usuario.usuario}</td>
-                            <td>${usuario.password}</td>
-                            <td>${usuario.rol || 'Usuario'}</td>
-                            <td>${usuario.fechaCreacion}</td>
-                        `;
+                        row.innerHTML = '<td colspan="6" class="text-center">No hay usuarios registrados</td>';
                         tablaUsuarios.appendChild(row);
-                    });
+                    } else {
+                        data.forEach(usuario => {
+                            const row = document.createElement('tr');
+                            const permisos = usuario.permisos || {};
+                            
+                            // Función para mostrar sí/no o ícono según el valor booleano
+                            const mostrarPermiso = (valor) => {
+                                if (valor === true || valor === 'true') {
+                                    return '<span class="badge bg-success">Sí</span>';
+                                } else {
+                                    return '<span class="badge bg-secondary">No</span>';
+                                }
+                            };
+                            
+                            row.innerHTML = `
+                                <td>${usuario.usuario || ''}</td>
+                                <td>${usuario.password || ''}</td>
+                                <td>${mostrarPermiso(permisos.login)}</td>
+                                <td>${mostrarPermiso(permisos.admin_usuarios)}</td>
+                                <td>${mostrarPermiso(permisos.admin_elastic)}</td>
+                                <td>${mostrarPermiso(permisos.admin_data_elastic)}</td>
+                            `;
+                            tablaUsuarios.appendChild(row);
+                        });
+                    }
                     
                     // Ocultar el indicador de carga antes de mostrar la tabla
                     document.getElementById('div_cargando').style.display = 'none';
