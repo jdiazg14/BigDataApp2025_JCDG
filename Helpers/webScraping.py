@@ -4,7 +4,8 @@ import json
 from urllib.parse import urljoin
 import os
 from typing import List, Dict
-from Helpers import Funciones
+#from Helpers import Funciones
+from .funciones import Funciones
 
 
 class WebScraping:
