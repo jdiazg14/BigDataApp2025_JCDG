@@ -120,13 +120,18 @@ class ElasticSearch:
             return False
     
     def listar_indices(self) -> List[Dict]:
-        """Lista todos los índices con información detallada"""
+        """Lista todos los índices con información detallada (excluye índices internos)"""
         try:
             indices = self.client.cat.indices(format='json', h='index,docs.count,store.size,health,status')
             
+            # Filtro para ocultar índices internos (empiezan por '.')
+            indices_filtrados = [
+                idx for idx in indices 
+                if not idx['index'].startswith('.')    # excluye .internal*, .ds-*, etc.
+        ]
             # Convertir a formato más legible
             indices_formateados = []
-            for idx in indices:
+            for idx in indices_filtrados:
                 indices_formateados.append({
                     'nombre': idx.get('index', ''),
                     'total_documentos': int(idx.get('docs.count', 0)) if idx.get('docs.count', '0').isdigit() else 0,

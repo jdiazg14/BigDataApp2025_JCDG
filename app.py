@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import os
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from Helpers import MongoDB, ElasticSearch, Funciones, WebScraping
+from Helpers import MongoDB, ElasticSearch, Funciones, WebScraping, PLN
 
 # Cargar variables de entorno
 load_dotenv()
@@ -16,15 +16,15 @@ MONGO_URI = os.getenv('MONGO_URI')
 MONGO_DB = os.getenv('MONGO_DB')
 MONGO_COLECCION = os.getenv('MONGO_COLECCION', 'usuario_roles')
 
-
 # Configuración ElasticSearch Cloud
 ELASTIC_CLOUD_URL       = os.getenv('ELASTIC_CLOUD_URL')
 ELASTIC_API_KEY         = os.getenv('ELASTIC_API_KEY')
-ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_cuentos')
+#ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_cuentos')
+ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_minagricultura')
 
 # Versión de la aplicación
-VERSION_APP = "1.2.0"
-CREATOR_APP = "LuisFCG"
+VERSION_APP = "1.3.0"
+CREATOR_APP = "JuanCDG"
 
 # Inicializar conexiones
 mongo = MongoDB(MONGO_URI, MONGO_DB)
@@ -491,7 +491,7 @@ def cargar_documentos_elastic():
         
         elif metodo == 'webscraping':
             # Procesar archivos con PLN
-            #pln = PLN(cargar_modelos=True)
+            pln = PLN(cargar_modelos=True)
             
             for archivo in archivos:
                 ruta = archivo.get('ruta')
@@ -529,13 +529,13 @@ def cargar_documentos_elastic():
                 
                 # Procesar con PLN
                 try:
-                    #resumen = pln.generar_resumen(texto, num_oraciones=3)
-                    #entidades = pln.extraer_entidades(texto)
-                    #temas = pln.extraer_temas(texto, top_n=10)
+                    resumen = pln.generar_resumen(texto, num_oraciones=3)
+                    entidades = pln.extraer_entidades(texto)
+                    temas = pln.extraer_temas(texto, top_n=10)
 
-                    resumen = ""            #borrar en produccion
-                    entidades = ""          #borrar en produccion
-                    temas = ""              #borrar en produccion
+                    #resumen = ""            #borrar en produccion
+                    #entidades = ""          #borrar en produccion
+                    #temas = ""              #borrar en produccion
                     
                     # Crear documento
                     documento = {
@@ -554,7 +554,7 @@ def cargar_documentos_elastic():
                     print(f"Error al procesar {archivo.get('nombre')}: {e}")
                     continue
             
-            #pln.close()
+            pln.close()
         
         if not documentos:
             return jsonify({'success': False, 'error': 'No se pudieron procesar documentos'}), 400
