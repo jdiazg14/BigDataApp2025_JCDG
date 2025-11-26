@@ -227,7 +227,8 @@ class ElasticSearch:
                 'success': True,
                 'total': response['hits']['total']['value'],
                 'resultados': response['hits']['hits'],
-                'aggs': aggs
+                #'aggs': aggs
+                'aggs': response.get('aggregations', {})
             }
         except Exception as e:
             return {
@@ -318,8 +319,10 @@ class ElasticSearch:
                 index = comando.get('index')
                 query = comando.get('query', {})
                 
-                response = self.client.delete_by_query(index=index, body={'query': query})
-                return {'success': True, 'data': response}
+                response = self.client.delete_by_query(index=index, body={'query': query}, refresh=True)
+                response_dict = response.body if hasattr(response, 'body') else response    # Convertir a dict (serializable)
+                #return {'success': True, 'data': response}
+                return {'success': True, 'data': response_dict}
                 
             else:
                 return {'success': False, 'error': f'Operación DML no soportada: {operacion}'}

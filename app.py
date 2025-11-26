@@ -321,6 +321,27 @@ def ejecutar_query_elastic():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/ejecutar-dml-elastic', methods=['POST'])
+def ejecutar_dml_elastic():
+    try:
+        if not session.get('logged_in'):
+            return jsonify({'success': False, 'error': 'No autorizado'}), 401
+        
+        permisos = session.get('permisos', {})
+        if not permisos.get('admin_elastic'):
+            return jsonify({'success': False, 'error': 'No tiene permisos para gestionar ElasticSearch'}), 403
+        
+        data = request.get_json()
+        query_json = data.get("comando", "")
+        
+        if not query_json:
+            return jsonify({'success': False, 'error': 'Comando DML vacío'}), 400
+        
+        resultado = elastic.ejecutar_dml(query_json)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
 @app.route('/cargar_doc_elastic')
 def cargar_doc_elastic():
     """Página de carga de documentos a ElasticSearch (protegida requiere login y permiso admin_data_elastic)"""
