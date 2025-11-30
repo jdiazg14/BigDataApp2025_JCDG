@@ -14,9 +14,10 @@ transformers
 sentence-transformers
 nltk
 scikit-learn==1.3.2
-tf-keras==0.1.0
+tf-keras==2.17.0
 PyPDF2
 pytesseract
 pdf2image
 Pillow
 werkzeug
+playwright

@@ -8,6 +8,7 @@ import pytesseract
 from typing import Dict, List
 from werkzeug.utils import secure_filename
 from datetime import datetime
+import hashlib
 
 class Funciones:
     @staticmethod
@@ -271,3 +272,25 @@ class Funciones:
         except Exception as e:
             print(f"Error al guardar JSON: {e}")
             return False
+        
+    @staticmethod
+    def calcular_hash_archivo(ruta_archivo):
+        """
+        Calcula hash SHA-256 de un archivo en modo streaming, sin cargarlo a memoria.
+
+        Devuelve:
+            "sha256:<hash_hexadecimal>"
+        """
+        sha256 = hashlib.sha256()
+
+        try:
+            with open(ruta_archivo, "rb") as f:
+                for bloque in iter(lambda: f.read(8192), b""):
+                    sha256.update(bloque)
+
+            hash_hex = sha256.hexdigest()
+            return f"sha256:{hash_hex}"
+
+        except Exception as e:
+            print(f"Error calculando hash del archivo {ruta_archivo}: {e}")
+            return None

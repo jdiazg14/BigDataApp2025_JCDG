@@ -399,3 +399,36 @@ class ElasticSearch:
     def close(self):
         """Cierra la conexión"""
         self.client.close()
+
+    def existe_hash(self, hash_valor):
+        """
+        Verifica si un documento con el hash dado ya existe en Elasticsearch.
+
+        Args:
+            hash_valor: string 'sha256:<valor>'
+
+        Returns:
+            True  -> si existe al menos un documento con ese hash
+            False -> si no existe
+        """
+        try:
+            consulta = {
+                "query": {
+                    "term": {
+                        "hash.keyword": hash_valor      # búsquedas exactas
+                    }
+                }
+            }
+
+            respuesta = self.client.search(
+                index=self.index,
+                body=consulta,
+                size=1
+            )
+
+            total = respuesta["hits"]["total"]["value"]
+            return total > 0
+
+        except Exception as e:
+            print(f"Error verificando hash en Elasticsearch: {e}")
+            return False
