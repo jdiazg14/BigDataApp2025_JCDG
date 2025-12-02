@@ -77,21 +77,28 @@
         <div class="card mb-4" id="opciones_webscraping" style="display: none;">
             <div class="card-body">
                 <h5 class="card-title">3. Configurar Web Scraping</h5>
+                
+                <!-- URL principal -->
                 <div class="mb-3">
                     <label for="url_webscraping" class="form-label">URL para Web Scraping</label>
                     <input type="url" class="form-control" id="url_webscraping" placeholder="https://ejemplo.com/pagina">
                     <div class="form-text">URL inicial desde donde se extraerán los enlaces</div>
                 </div>
+
+                <!-- Extensiones para navegar -->
                 <div class="mb-3">
-                    <label for="extensiones_navegar" class="form-label">Extensiones a Navegar</label>
+                    <label for="extensiones_navegar" class="form-label">Extensiones a Navegar (ASPX, PHP, HTML, etc.)</label>
                     <input type="text" class="form-control" id="extensiones_navegar" placeholder="aspx, php" value="aspx">
                     <div class="form-text">Separar por comas. Ej: aspx, php, html</div>
                 </div>
+
+                <!-- Tipos de archivos a descargar -->
                 <div class="mb-3">
-                    <label for="tipos_archivos" class="form-label">Tipos de Archivos a Descargar</label>
+                    <label for="tipos_archivos" class="form-label">Tipos de Archivos a Descargar (PDF, DOC, TXT, etc.)</label>
                     <input type="text" class="form-control" id="tipos_archivos" placeholder="pdf, txt" value="pdf">
                     <div class="form-text">Separar por comas. Ej: pdf, txt, doc</div>
                 </div>
+
                 <button type="button" class="btn btn-primary" onclick="procesarWebScraping()">
                     <i class="bi bi-download"></i> Iniciar Web Scraping
                 </button>
@@ -256,16 +263,16 @@
             const extensionesNavegar = document.getElementById('extensiones_navegar').value.trim();
             const tiposArchivos = document.getElementById('tipos_archivos').value.trim();
             const selectIndex = document.getElementById('select_index');
-            
+                    
             if (!url) {
                 alert('Por favor, ingrese una URL');
                 return;
             }
             
-            /*if (!selectIndex.value) {
+            if (!selectIndex.value) {
                 alert('Por favor, seleccione un índice de destino');
                 return;
-            }*/
+            }
             
             mostrarCargando('Realizando Web Scraping... Esto puede tardar varios minutos.');
             

@@ -9,6 +9,7 @@ from typing import Dict, List
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import hashlib
+import time
 
 class Funciones:
     @staticmethod

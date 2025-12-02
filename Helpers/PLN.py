@@ -12,7 +12,6 @@ from datetime import datetime
 import re
 from typing import List, Dict, Tuple, Optional
 import warnings
-
 warnings.filterwarnings('ignore')
 
 # Descargar recursos de NLTK si no están disponibles
@@ -51,6 +50,7 @@ class PLN:
         try:
             print("Cargando modelo de spaCy...")
             self.nlp = spacy.load(self.modelo_spacy_nombre)
+            self.nlp.max_length = 3_000_000  # permite textos largos
             print(f"Modelo spaCy '{self.modelo_spacy_nombre}' cargado correctamente")
         except OSError:
             print(f"Error: Modelo '{self.modelo_spacy_nombre}' no encontrado.")
@@ -363,3 +363,54 @@ class PLN:
         # Los modelos de spaCy y transformers se liberan automáticamente
         # pero podemos agregar limpieza aquí si es necesario
         pass
+
+    def dividir_en_chunks(self, texto: str, max_chars: int = 800000) -> List[str]:
+        """Divide el texto en bloques para evitar límite de spaCy."""
+        chunks = []
+        for i in range(0, len(texto), max_chars):
+            chunks.append(texto[i:i + max_chars])
+        return chunks
+    
+    def procesar_texto_largo(self, texto: str) -> Dict:
+        """Procesa textos largos dividiéndolos en chunks."""
+        if len(texto) <= 900000:
+            # No requiere chunking
+            return {
+                "entidades": self.extraer_entidades(texto),
+                "temas": self.extraer_temas(texto),
+                "resumen": self.generar_resumen(texto)
+            }
+
+        print(f" → Texto demasiado largo ({len(texto)} chars). Dividiendo en chunks…")
+        chunks = self.dividir_en_chunks(texto)
+
+        entidades_total = {
+            "personas": [],
+            "lugares": [],
+            "organizaciones": [],
+            "fechas": [],
+            "leyes": [],
+            "otros": []
+        }
+        resumen_total = ""
+
+        for i, parte in enumerate(chunks):
+            print(f"   → Procesando chunk {i+1}/{len(chunks)}")
+
+            # ENTIDADES
+            ents = self.extraer_entidades(parte)
+            for key in entidades_total:
+                entidades_total[key].extend(ents[key])
+
+            # RESUMEN (simple pero funcional)
+            resumen_total += self.generar_resumen(parte, num_oraciones=2) + "\n"
+
+        # Eliminar duplicados de entidades
+        for key in entidades_total:
+            entidades_total[key] = list(dict.fromkeys(entidades_total[key]))
+
+        return {
+            "entidades": entidades_total,
+            "temas": self.extraer_temas(texto[:500000]),  # temas solo sobre parte inicial
+            "resumen": resumen_total.strip()
+        }

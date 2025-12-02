@@ -1,15 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for,jsonify, session, flash
 from dotenv import load_dotenv
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Desactivar mensajes de TensorFlow
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from Helpers import MongoDB, ElasticSearch, Funciones, WebScraping, PLN
+from Helpers import MongoDB, ElasticSearch, Funciones, WebScrapingMinAgricultura, PLN
 import warnings
 warnings.filterwarnings("ignore")
-import tensorflow as tf
-tf.get_logger().setLevel('ERROR')
-#from webScraping import extraer_links_universal
 
 # Cargar variables de entorno
 load_dotenv()
@@ -28,8 +24,11 @@ ELASTIC_API_KEY         = os.getenv('ELASTIC_API_KEY')
 #ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_cuentos')
 ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_minagricultura')
 
+#Carpeta de descargas
+UPLOAD_DIR = os.getenv('UPLOAD_DIR', 'static/uploads')
+
 # Versión de la aplicación
-VERSION_APP = "1.3.0"
+VERSION_APP = "1.3.1"
 CREATOR_APP = "JuanCDG"
 
 # Inicializar conexiones
@@ -462,7 +461,7 @@ def cargar_documentos_elastic():
                     continue
 
                 # Validar si el hash ya existe en Elastic
-                if elastic.existe_hash(hash_archivo):
+                if elastic.existe_hash(hash_archivo, index):
                     print(f"Documento ya indexado (hash duplicado): {ruta}")
                     continue
                 
@@ -497,6 +496,7 @@ def cargar_documentos_elastic():
                 
                 # Procesar con PLN
                 try:
+                    '''
                     resumen = pln.generar_resumen(texto, num_oraciones=3)
                     entidades = pln.extraer_entidades(texto)
                     temas = pln.extraer_temas(texto, top_n=10)
@@ -514,6 +514,23 @@ def cargar_documentos_elastic():
                     }
                     
                     documentos.append(documento)
+                    '''
+                    
+                    # Procesar con PLN usando chunks
+                    resultado_pln = pln.procesar_texto_largo(texto)
+
+                    documento = {
+                        'texto': texto[:2_000_000],  # limitar tamaño para Elastic
+                        'fecha': datetime.now().isoformat(),
+                        'ruta': ruta,
+                        'nombre_archivo': archivo.get('nombre', ''),
+                        'hash_archivo': hash_archivo,
+                        'resumen': resultado_pln.get('resumen', ''),
+                        'entidades': resultado_pln.get('entidades', {}),
+                        'temas': resultado_pln.get('temas', [])
+                    }
+
+                    documentos.append(documento)                    
                 
                 except Exception as e:
                     print(f"Error al procesar {archivo.get('nombre')}: {e}")
@@ -536,161 +553,57 @@ def cargar_documentos_elastic():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-'''
 @app.route('/procesar-webscraping-elastic', methods=['POST'])
 def procesar_webscraping_elastic():
-    """API para procesar Web Scraping"""
+    """
+    Inicia el proceso de web scraping dinámico y descarga de PDFs.
+    """
+    # Validación de sesión
+    if not session.get('logged_in'):
+        return jsonify({'success': False, 'error': 'Acceso no autorizado'}), 401
+
+    permisos = session.get('permisos', {})
+    if not permisos.get('admin_data_elastic'):
+        return jsonify({'success': False, 'error': 'No tiene permisos para cargar datos'}), 403
+
     try:
-        if not session.get('logged_in'):
-            return jsonify({'success': False, 'error': 'No autorizado'}), 401
-        
-        permisos = session.get('permisos', {})
-        if not permisos.get('admin_data_elastic'):
-            return jsonify({'success': False, 'error': 'No tiene permisos para cargar datos'}), 403
-        
-        data = request.get_json()
-        url = data.get('url')
-        extensiones_navegar = data.get('extensiones_navegar', 'aspx')
-        tipos_archivos = data.get('tipos_archivos', 'pdf')
-        index = data.get('index')
-        
-        if not url or not index:
-            return jsonify({'success': False, 'error': 'URL e índice son requeridos'}), 400
-        
-        # Procesar listas de extensiones
-        lista_ext_navegar = [ext.strip() for ext in extensiones_navegar.split(',')]
-        lista_tipos_archivos = [ext.strip() for ext in tipos_archivos.split(',')]
-        
-        # Combinar ambas listas para extraer todos los enlaces
-        todas_extensiones = lista_ext_navegar + lista_tipos_archivos
-        
-        # Inicializar WebScraping
-        scraper = WebScraping(dominio_base=url.rsplit('/', 1)[0] + '/')
-        
-        # Limpiar carpeta de uploads
-        carpeta_upload = 'static/uploads'
-        Funciones.crear_carpeta(carpeta_upload)
-        Funciones.borrar_contenido_carpeta(carpeta_upload)
-        
-        # Extraer todos los enlaces
-        json_path = os.path.join(carpeta_upload, 'links.json')
-        resultado = scraper.extraer_todos_los_links(
-            url_inicial=url,
-            json_file_path=json_path,
-            listado_extensiones=todas_extensiones,
-            max_iteraciones=50
-        )
-        
-        if not resultado['success']:
-            return jsonify({'success': False, 'error': 'Error al extraer enlaces'}), 500
-        
-        # Descargar archivos PDF (o los tipos especificados)
-        resultado_descarga = scraper.descargar_pdfs(json_path, carpeta_upload)
-        
-        scraper.close()
-        
-        # Listar archivos descargados
-        archivos = Funciones.listar_archivos_carpeta(carpeta_upload, lista_tipos_archivos)
-        
-        return jsonify({
-            'success': True,
-            'archivos': archivos,
-            'mensaje': f'Se descargaron {len(archivos)} archivos',
-            'stats': {
-                'total_enlaces': resultado['total_links'],
-                'descargados': resultado_descarga.get('descargados', 0),
-                'errores': resultado_descarga.get('errores', 0)
-            }
-        })
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-'''
+        data = request.get_json()                           # Captura los datos que vienen del formulario (frontend)
+        base_url = data.get("url", "").strip()              # URL digitada por el usuario (frontend)
+        if not base_url:
+            return jsonify({"success": False, "message": "Debe ingresar una URL válida"}), 400
 
-@app.route('/procesar-webscraping-elastic', methods=['POST'])
-def procesar_webscraping_elastic():
-    """API para procesar Web Scraping (versión dinámica con Playwright)"""
-    try:
-        # Validación de sesión
-        if not session.get('logged_in'):
-            return jsonify({'success': False, 'error': 'No autorizado'}), 401
-        
-        permisos = session.get('permisos', {})
-        if not permisos.get('admin_data_elastic'):
-            return jsonify({'success': False, 'error': 'No tiene permisos para cargar datos'}), 403
-        
-        # Entrada desde el frontend
-        data = request.get_json()
-        url = data.get('url')
-        extensiones_navegar = data.get('extensiones_navegar', 'aspx')
-        tipos_archivos = data.get('tipos_archivos', 'pdf')
-        index = data.get('index')
+        # 1. Crear scraper
+        scraper = WebScrapingMinAgricultura(base_url)
 
-        #  selector opcional del contenedor
-        selector = data.get('selector', None)
+        # 2. Crear si no existe carpeta uploads y limpiar su contenido
+        Funciones.crear_carpeta(UPLOAD_DIR)
+        Funciones.borrar_contenido_carpeta(UPLOAD_DIR)
 
-        if not url or not index:
-            return jsonify({'success': False, 'error': 'URL e índice son requeridos'}), 400
-        
-        # Procesar listas de extensiones
-        lista_ext_navegar = [ext.strip().lower() for ext in extensiones_navegar.split(',')]
-        lista_tipos_archivos = [ext.strip().lower() for ext in tipos_archivos.split(',')]
+        # 3. EXTRAER ENLACES
+        enlaces = scraper.extraer_todos_los_enlaces()
 
-        # Extensiones totales a extraer como enlaces
-        todas_extensiones = lista_ext_navegar + lista_tipos_archivos
-        
-        # Preparar carpeta de descargas
-        carpeta_upload = 'static/uploads'
-        Funciones.crear_carpeta(carpeta_upload)
-        Funciones.borrar_contenido_carpeta(carpeta_upload)
+        # 4. DESCARGAR ARCHIVOS
+        resultado_descarga = scraper.descargar_archivos(enlaces, UPLOAD_DIR)
 
-        # Scraping dinámico
-        scraper = WebScraping(headless=True)
-
-        # 1. Extraer enlaces desde la página
-        enlaces = scraper.extraer_links(
-            url=url,
-            selector_contenedor=selector,
-            extensiones=todas_extensiones
-        )
-
-        if not enlaces:
-            return jsonify({
-                'success': False,
-                'error': 'No se encontraron enlaces con las extensiones indicadas'
-            }), 404
-
-        # 2. Descargar archivos correspondientes
-        descargados = 0
-        errores = 0
-
-        for enlace in enlaces:
-            if enlace["type"] in lista_tipos_archivos:
-                ruta_pdf = scraper.descargar_archivo(enlace["url"], carpeta_upload)
-                if ruta_pdf:
-                    descargados += 1
-                else:
-                    errores += 1
-        
-        scraper._stop()  # Cerrar Playwright
-
-        # 3. Listar archivos descargados para mostrarlos en UI
-        archivos = Funciones.listar_archivos_carpeta(carpeta_upload, lista_tipos_archivos)
+        # 5. LISTAR ARCHIVOS DESCARGADOS
+        archivos = Funciones.listar_archivos_carpeta(UPLOAD_DIR, ['pdf'])
 
         return jsonify({
-            'success': True,
-            'archivos': archivos,
-            'mensaje': f'Se descargaron {descargados} archivos',
-            'stats': {
-                'total_enlaces': len(enlaces),
-                'descargados': descargados,
-                'errores': errores
+            "success": True,
+            "archivos": archivos,
+            "mensaje": f"Se descargaron {len(archivos)} archivos",
+            "stats": {
+                "total_enlaces": resultado_descarga["total"],
+                "descargados": resultado_descarga["descargados"],
+                "errores": resultado_descarga["errores"]
             }
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
+        print("ERROR SCRAPING:", e)
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e) if str(e) else "Error en Playwright (ver consola)"}), 500
 
 
 #--------------rutas de elasitcsearch - fin-------------
