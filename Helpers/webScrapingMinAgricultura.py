@@ -51,20 +51,31 @@ class WebScrapingMinAgricultura:
         print(f"\n=== CATEGORÍA {tipo_id} ===")
         print(f"Visitando: {url}")
 
-
+        # Bloque de navegación con manejo de errores
         try:
             print(" → Intentando cargar la página...", url)
             self.page.goto(url, timeout=60000, wait_until="load")       # Esperar a que la página cargue completamente
             print(" → Página cargada correctamente.")
-            time.sleep(2)
         except Exception as e:
             print(" ❌ ERROR en goto():", e)
             raise e  # <-- Propaga el error real
 
-        enlaces = []
+        # Bloque de espera del contenido dinámico
+        if tipo_id in [1, 2, 3, 4]:                         # Categorías 1 a 4
+            selector = "div.export a[href$='.pdf']"
+        elif tipo_id == 5:
+            selector = "td.ms-vb a[href$='.pdf'], td.ms-vb a[href*='.pdf']"   # Categoría 5 (Jurisprudencia)
+        else:
+            print(f"⚠ Tipo_id {tipo_id} no soportado.")
+            return []
+        try:
+            self.page.wait_for_selector(selector, timeout=30000)  # Esperar hasta 30 segundos
+            #print(" → Selector encontrado:", selector)
+        except TimeoutError as e:
+            print(f" ⚠ Selector no apareció: {selector} — continuando igual…")
 
-        #links = self.page.locator('a[href$=".pdf"]').all()
-        links = self.page.locator("div.export a[href$='.pdf']").all()   #Seleccion más específica
+        enlaces = []
+        links = self.page.locator(selector).all()   # Obtener todos los enlaces que coinciden con el selector
 
         # Conteo de enlaces encontrados para depuración
         total = len(links)
@@ -73,16 +84,12 @@ class WebScrapingMinAgricultura:
         for link in links:
             href = link.get_attribute("href")
             print(" → HREF encontrado: ", href)
-
             if not href:                            # Si no hay href, saltar
                 continue
-
             pdf_url = urljoin(url, href)            # Construir URL absoluta
-
             if "/Normatividad/" not in pdf_url:     # Filtrar enlaces que no pertenezcan a la sección de Normatividad
                 print("   [Descartado por filtro 'Normatividad']", pdf_url)
                 continue
-
             print("   [AGREGADO]", pdf_url)
             enlaces.append(urljoin(url, href))       # Añadir enlace a la lista
 
@@ -95,13 +102,15 @@ class WebScrapingMinAgricultura:
         self.start()
         enlaces = []
 
+        '''
         # Iterar sobre todas las categorías
         for tipo_id in self.categorias.keys():
             encontrados = self._extraer_enlaces_categoria(tipo_id)
             enlaces.extend(encontrados)
+        '''
 
         # Una sola categoría (para pruebas)
-        #enlaces = self._extraer_enlaces_categoria(5)
+        enlaces = self._extraer_enlaces_categoria(5)
 
         self.stop()
 

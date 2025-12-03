@@ -427,6 +427,10 @@ def cargar_documentos_elastic():
         archivos = data.get('archivos', [])
         index = data.get('index')
         metodo = data.get('metodo', 'zip')
+
+        print("\n===== CARGAR DOCUMENTOS ELASTIC =====")
+        print("Archivos recibidos:", len(archivos))
+        print("Índice seleccionado:", index)
         
         if not archivos or not index:
             return jsonify({'success': False, 'error': 'Archivos e índice son requeridos'}), 400
@@ -446,12 +450,17 @@ def cargar_documentos_elastic():
         
         elif metodo == 'webscraping':
             # Procesar archivos con PLN
-            pln = PLN(cargar_modelos=True)
+            #pln = PLN(cargar_modelos=True)
+            
+            # 1. Filtrar archivos nuevos (no duplicados)
+            archivos_filtrados = []
             
             for archivo in archivos:
                 # verificar que el archivo exista
                 ruta = archivo.get('ruta')
+                #print(f"Procesando archivo: {ruta}")
                 if not ruta or not os.path.exists(ruta):
+                    print(f"   ✖ Archivo no encontrado: {ruta}")
                     continue
 
                 # Calcular hash del archivo PDF
@@ -464,7 +473,21 @@ def cargar_documentos_elastic():
                 if elastic.existe_hash(hash_archivo, index):
                     print(f"Documento ya indexado (hash duplicado): {ruta}")
                     continue
+                archivo['hash_archivo'] = hash_archivo                  # agregar hash al diccionario del archivo
+                archivos_filtrados.append(archivo)       
                 
+            # Si no hay archivos nuevos, retornar
+            if not archivos_filtrados:
+                print("No hay archivos nuevos para procesar.")
+                return jsonify({'success': True, 'indexados': 0, 'errores': 0})
+            
+            # Cargar PLN (LENTO)
+            pln = PLN(cargar_modelos=True)
+
+            for archivo in archivos_filtrados:
+                ruta = archivo.get('ruta')
+                hash_archivo = archivo.get('hash_archivo')
+                print(f"\n--- Procesando archivo: {ruta} ---")
                 # Extraer texto según tipo de archivo
                 extension = archivo.get('extension', '').lower()
 
@@ -472,11 +495,13 @@ def cargar_documentos_elastic():
                 if extension == 'pdf':
                     # Intentar extracción normal
                     texto = Funciones.extraer_texto_pdf(ruta)
+                    print(f" → Texto extraído (longitud {len(texto)} caracteres): OK") 
                     
                     # Si no se extrajo texto, intentar con OCR
                     if not texto or len(texto.strip()) < 100:
                         try:
                             texto = Funciones.extraer_texto_pdf_ocr(ruta)
+                            print(f" → Texto extraído con OCR (longitud {len(texto)} caracteres): OK")
                         except:
                             pass
                 
@@ -517,8 +542,19 @@ def cargar_documentos_elastic():
                     '''
                     
                     # Procesar con PLN usando chunks
+                    print(" → Procesando texto con PLN (método chunks)...")
                     resultado_pln = pln.procesar_texto_largo(texto)
+                    print("   → Resumen generado (longitud {} caracteres)".format(len(resultado_pln.get('resumen', ''))))
 
+                    temas_pln = resultado_pln.get("temas", [])
+
+                    # Convertir lista de tuplas → lista de objetos
+                    temas_convertidos = [
+                        {"palabra": palabra, "relevancia": float(relevancia)}
+                        for palabra, relevancia in temas_pln
+                    ]
+
+                    # Crear documento
                     documento = {
                         'texto': texto[:2_000_000],  # limitar tamaño para Elastic
                         'fecha': datetime.now().isoformat(),
@@ -527,7 +563,7 @@ def cargar_documentos_elastic():
                         'hash_archivo': hash_archivo,
                         'resumen': resultado_pln.get('resumen', ''),
                         'entidades': resultado_pln.get('entidades', {}),
-                        'temas': resultado_pln.get('temas', [])
+                        'temas': temas_convertidos
                     }
 
                     documentos.append(documento)                    
@@ -538,11 +574,16 @@ def cargar_documentos_elastic():
             
             pln.close()
         
+        # Si no hay documentos nuevos, terminar sin error
         if not documentos:
-            return jsonify({'success': False, 'error': 'No se pudieron procesar documentos'}), 400
+            #return jsonify({'success': False, 'error': 'No se pudieron procesar documentos'}), 400
+            print("No hay documentos nuevos para procesar (todos duplicados).")
+            return jsonify({"success": True, "indexados": 0, "duplicados": 0}), 200
         
         # Indexar documentos en Elastic
+        print(f"\nTotal de documentos a indexar: {len(documentos)}")
         resultado = elastic.indexar_bulk(index, documentos)
+        print("Resultado de indexación:", resultado)
         
         return jsonify({
             'success': resultado['success'],

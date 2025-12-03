@@ -415,7 +415,7 @@ class ElasticSearch:
             consulta = {
                 "query": {
                     "term": {
-                        "hash.keyword": hash_archivo      # búsquedas exactas
+                        "hash_archivo": hash_archivo      # búsquedas exactas
                     }
                 }
             }
@@ -427,6 +427,7 @@ class ElasticSearch:
                 return False
 
             total = respuesta.get("total", 0)
+            print(f"[INFO] Hash '{hash_archivo}' encontrado {total} veces en índice '{index}'.")
             return total > 0
 
         except Exception as e:
