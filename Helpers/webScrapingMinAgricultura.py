@@ -102,15 +102,14 @@ class WebScrapingMinAgricultura:
         self.start()
         enlaces = []
 
-        '''
+        
         # Iterar sobre todas las categorías
         for tipo_id in self.categorias.keys():
             encontrados = self._extraer_enlaces_categoria(tipo_id)
             enlaces.extend(encontrados)
-        '''
-
+        
         # Una sola categoría (para pruebas)
-        enlaces = self._extraer_enlaces_categoria(5)
+        #enlaces = self._extraer_enlaces_categoria(5)
 
         self.stop()
 
@@ -130,12 +129,12 @@ class WebScrapingMinAgricultura:
         print("\n===== INICIANDO DESCARGAS =====")
         print(f"Total de enlaces a procesar: {total}\n")
 
-        for url in enlaces:
+        for i, url in enumerate(enlaces, start=1):
             try:
                 nombre_archivo = url.split("/")[-1].replace("%20", "_")
                 ruta_destino = os.path.join(upload_dir, nombre_archivo)
 
-                print(f"[DESCARGANDO] {url}")
+                print(f"[Descargando archivo {i} / {total}]: {url}")
                 print(f" → Guardar como: {nombre_archivo}")
                 
                 # --- DESCARGA ROBUSTA CON STREAM ---

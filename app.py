@@ -28,7 +28,7 @@ ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_minagricultu
 UPLOAD_DIR = os.getenv('UPLOAD_DIR', 'static/uploads')
 
 # Versión de la aplicación
-VERSION_APP = "1.3.1"
+VERSION_APP = "2.0.0"
 CREATOR_APP = "JuanCDG"
 
 # Inicializar conexiones
@@ -59,8 +59,11 @@ def buscar_elastic():
         data = request.get_json()
         texto_buscar = data.get('texto', '').strip()
         #campo = data.get('campo', '_all') # _opciones (traidos de un select del formulario): titulo, contenido, autor, fecha_creacion
-        campo = 'texto'
+        #campo = 'texto'
+        pagina = int(data.get("pagina", 1))
+        tamano_pagina = int(data.get("tamano_pagina", 10))
         
+        '''
         if not texto_buscar:
             return jsonify({
                 'success': False,
@@ -74,27 +77,119 @@ def buscar_elastic():
                             }
                         } 
                     }
-        aggs= {
-            "cuentos_por_mes": {
-                "date_histogram": {
-                    "field": "fecha_creacion",
-                    "calendar_interval": "month"
-                }
+        aggs = {
+            "por_tipo_norma": {
+                "terms": {"field": "tipo_norma.keyword"}
             },
-            "cuentos_por_autor": {
-                "terms": {
-                    "field": "autor",
-                    "size": 10
+            "por_anio": {
+                "terms": {"field": "anio_norma"}
+            },
+            "por_entidad": {
+                "terms": {"field": "entidad_emisora.keyword"}
+            },
+            "por_tema": {
+                "terms": {"field": "temas.palabra.keyword"}
+            }
+        }
+        '''
+
+        query_base = {
+            "from": (pagina - 1) * tamano_pagina,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "multi_match": {
+                                "query": texto_buscar,
+                                "type": "best_fields",
+                                "minimum_should_match": "60%",
+                                "fields": [
+                                    "titulo_norma^5",
+                                    "resumen^4",
+                                    "texto^3",
+                                    "entidades.personas^2",
+                                    "entidades.lugares^2",
+                                    "entidades.organizaciones^2",
+                                    "entidades.leyes^2",
+                                    "entidades.otros",
+                                    "tipo_norma^3",
+                                    "entidad_emisora^3",
+                                    "temas.palabra^4"
+                                ]
+                            }
+                        }
+                    ],
+                }
+            }
+        }
+
+        aggs = {
+            "filtro_anio": {
+                "terms": { "field": "anio_norma", "size": 200, "order": { "_key": "desc" } }
+            },
+            "filtro_tipo_norma": {
+                "terms": { "field": "tipo_norma", "size": 50 }
+            },
+            "filtro_entidad": {
+                "terms": { "field": "entidad_emisora", "size": 100 }
+            },
+            "filtro_temas": {
+                "nested": {
+                    "path": "temas"
+                },
+                "aggs": {
+                    "temas_palabras": {
+                        "terms": { "field": "temas.palabra", "size": 50 }
+                    }
                 }
             }
         }
         
+
+        # Aplicar filtros
+        filtros = data.get("filtros", {})
+
+        filtros_must = []
+
+        # Filtro tipo_norma
+        if filtros.get("tipo_norma"):
+            filtros_must.append({
+                "terms": {"tipo_norma": filtros["tipo_norma"]}
+            })
+
+        # Filtro año
+        if filtros.get("anio_norma"):
+            filtros_must.append({
+                "terms": {"anio_norma": filtros["anio_norma"]}
+            })
+
+        # Filtro entidad_emisora
+        if filtros.get("entidad_emisora"):
+            filtros_must.append({
+                "terms": {"entidad_emisora": filtros["entidad_emisora"]}
+            })
+
+        # Filtro temas (nested)
+        if filtros.get("temas"):
+            filtros_must.append({
+                "nested": {
+                    "path": "temas",
+                    "query": {
+                        "terms": {"temas.palabra": filtros["temas"]}
+                    }
+                }
+            })
+
+        # Insertar filtros dentro del bool.must
+        query_base["query"]["bool"].setdefault("filter", []).extend(filtros_must)
+
+
         # Ejecutar búsqueda sobre elastic
         resultado = elastic.buscar(
             index=ELASTIC_INDEX_DEFAULT,
             query=query_base,
-            aggs=aggs,            
-            size=100
+            aggs=aggs,
+            size=tamano_pagina
         )
         #print(resultado) 
         
@@ -450,7 +545,6 @@ def cargar_documentos_elastic():
         
         elif metodo == 'webscraping':
             # Procesar archivos con PLN
-            #pln = PLN(cargar_modelos=True)
             
             # 1. Filtrar archivos nuevos (no duplicados)
             archivos_filtrados = []
@@ -458,7 +552,7 @@ def cargar_documentos_elastic():
             for archivo in archivos:
                 # verificar que el archivo exista
                 ruta = archivo.get('ruta')
-                #print(f"Procesando archivo: {ruta}")
+                print(f"--- Verificando archivo: {ruta}")
                 if not ruta or not os.path.exists(ruta):
                     print(f"   ✖ Archivo no encontrado: {ruta}")
                     continue
@@ -484,10 +578,13 @@ def cargar_documentos_elastic():
             # Cargar PLN (LENTO)
             pln = PLN(cargar_modelos=True)
 
-            for archivo in archivos_filtrados:
+            total_archivos = len(archivos_filtrados)
+            print(f"\nTotal de archivos a procesar con PLN: {total_archivos}")
+
+            for i, archivo in enumerate(archivos_filtrados, start=1):
                 ruta = archivo.get('ruta')
                 hash_archivo = archivo.get('hash_archivo')
-                print(f"\n--- Procesando archivo: {ruta} ---")
+                print(f"\n--- Procesando archivo [{i} / {total_archivos}]: {ruta} ---")
                 # Extraer texto según tipo de archivo
                 extension = archivo.get('extension', '').lower()
 
@@ -554,16 +651,29 @@ def cargar_documentos_elastic():
                         for palabra, relevancia in temas_pln
                     ]
 
+                    # Extraer metadatos normativos
+                    meta = pln.extraer_metadatos_norma(texto)
+
+                    #print("fecha encontrada (raw):", meta.get("fecha_documento"))
+                    fecha_normalizada = pln._normalizar_fecha(meta.get("fecha_documento"))
+                    #print("fecha normalizada:", fecha_normalizada)
+
                     # Crear documento
                     documento = {
+                        "tipo_norma": meta.get("tipo_norma"),
+                        "numero_norma": meta.get("numero_norma"),
+                        "anio_norma": meta.get("anio_norma"),
+                        "entidad_emisora": meta.get("entidad_emisora"),
+                        "fecha_documento": fecha_normalizada,
+                        "titulo_norma": meta.get("titulo_norma"),    
                         'texto': texto[:2_000_000],  # limitar tamaño para Elastic
-                        'fecha': datetime.now().isoformat(),
+                        'resumen': resultado_pln.get('resumen', ''),
+                        'entidades': resultado_pln.get('entidades', {}),
+                        'temas': temas_convertidos,
                         'ruta': ruta,
                         'nombre_archivo': archivo.get('nombre', ''),
                         'hash_archivo': hash_archivo,
-                        'resumen': resultado_pln.get('resumen', ''),
-                        'entidades': resultado_pln.get('entidades', {}),
-                        'temas': temas_convertidos
+                        'fecha_carga': datetime.now().isoformat()
                     }
 
                     documentos.append(documento)                    
@@ -645,7 +755,6 @@ def procesar_webscraping_elastic():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e) if str(e) else "Error en Playwright (ver consola)"}), 500
-
 
 #--------------rutas de elasitcsearch - fin-------------
 

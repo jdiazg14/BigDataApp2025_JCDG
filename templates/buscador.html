@@ -57,6 +57,11 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        .filtro-scroll {
+            max-height: 180px;
+            overflow-y: auto;
+            padding-right: 6px;
+        }
     </style>
 </head>
 <body>
@@ -76,7 +81,7 @@
         </div>
     </header>
 
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
         <h1 class="text-center mb-4">Buscador de documentos</h1>
         
         <!-- Formulario de búsqueda -->
@@ -119,7 +124,7 @@
                         <div class="col-md-3">
                             <div class="aggs-list">
                                 <h6 class="mb-3">Agregaciones</h6>
-                                <div id="divAggregations">
+                                <div id="divAggregations" style="height:500px; overflow-y:auto; padding-right:6px;">
                                     <!-- Las aggregations se mostrarán aquí -->
                                 </div>
                             </div>
@@ -131,11 +136,13 @@
                                 <table class="table table-striped table-bordered table-hover">
                                     <thead class="table-dark">
                                         <tr>
-                                            <th style="width: 5%;">#</th>
-                                            <th style="width: 10%;">ID</th>
-                                            <th style="width: 10%;">Score</th>
-                                            <th style="width: 15%;">Índice</th>
-                                            <th style="width: 60%;">Contenido</th>
+                                            <th>#</th>
+                                            <th>Tipo</th>
+                                            <th>Número</th>
+                                            <th>Año</th>
+                                            <th>Entidad</th>
+                                            <th>Título</th>
+                                            <th>Resumen</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tablaResultados">
@@ -166,6 +173,13 @@
         // Inicializar año
         document.getElementById('current-year').textContent = new Date().getFullYear();
 
+        let filtrosActivos = {
+            tipo_norma: [],
+            anio_norma: [],
+            entidad_emisora: [],
+            temas: []
+        }; 
+
         // Función para buscar
         function buscar(event) {
             event.preventDefault();
@@ -190,7 +204,8 @@
                 },
                 body: JSON.stringify({
                     texto: textoBuscar,
-                    campo: '_all'
+                    campo: '_all',
+                    filtros: filtrosActivos
                 })
             })
             .then(response => response.json())
@@ -225,7 +240,7 @@
             document.getElementById('divResultados').style.display = 'block';
         }
 
-        // Función para mostrar aggregations
+ /*        // Función para mostrar aggregations
         function mostrarAggregations(aggs) {
             const divAggregations = document.getElementById('divAggregations');
             divAggregations.innerHTML = '';
@@ -263,6 +278,93 @@
                     const li = document.createElement('li');
                     li.innerHTML = `${bucket.key} <span class="badge bg-success">${bucket.doc_count}</span>`;
                     listAutor.appendChild(li);
+                });
+            }
+        }
+ */
+
+        function mostrarAggregations(aggs) {
+            const divAggregations = document.getElementById('divAggregations');
+            divAggregations.innerHTML = '';
+
+            if (!aggs || Object.keys(aggs).length === 0) {
+                divAggregations.innerHTML = '<p class="text-muted">No hay filtros disponibles</p>';
+                return;
+            }
+
+            // === FILTRO: Tipo de norma ===
+            if (aggs.filtro_tipo_norma?.buckets) {
+                const div = document.createElement('div');
+                div.className = 'aggs-item';
+                div.innerHTML = '<h6>Tipo de norma</h6><ul id="aggTipoNorma"></ul>';
+                divAggregations.appendChild(div);
+
+                const ul = document.getElementById('aggTipoNorma');
+                aggs.filtro_tipo_norma.buckets.forEach(b => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <a href="#" onclick="toggleFiltro('tipo_norma', '${b.key}')">
+                            ${b.key} <span class="badge bg-primary">${b.doc_count}</span>
+                        </a>`;
+                    ul.appendChild(li);
+                });
+            }
+
+            // === FILTRO: Año ===
+            if (aggs.filtro_anio?.buckets) {
+                const div = document.createElement('div');
+                div.className = 'aggs-item';
+                div.innerHTML = '<h6>Año</h6><ul id="aggAnio"></ul>';
+                divAggregations.appendChild(div);
+
+                const ul = document.getElementById('aggAnio');
+                aggs.filtro_anio.buckets.forEach(b => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <a href="#" onclick="toggleFiltro('anio_norma', '${b.key}')">
+                            ${b.key} <span class="badge bg-success">${b.doc_count}</span>
+                        </a>`;
+                    ul.appendChild(li);
+                });
+            }
+
+            // === FILTRO: Entidad emisora ===
+            if (aggs.filtro_entidad?.buckets) {
+                const div = document.createElement('div');
+                div.className = 'aggs-item';
+                div.innerHTML = '<h6>Entidad emisora</h6><ul id="aggEntidad"></ul>';
+                divAggregations.appendChild(div);
+
+                const ul = document.getElementById('aggEntidad');
+                aggs.filtro_entidad.buckets.forEach(b => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <a href="#" onclick="toggleFiltro('entidad_emisora', '${b.key}')">
+                            ${b.key} <span class="badge bg-warning">${b.doc_count}</span>
+                        </a>`;
+                    ul.appendChild(li);
+                });
+            }
+
+            // === FILTRO: Temas PLN (nested) ===
+            if (aggs.filtro_temas?.temas_palabras?.buckets ||
+                (aggs.filtro_temas?.buckets && aggs.filtro_temas.buckets.length)) {
+
+                const buckets = aggs.filtro_temas.temas_palabras?.buckets || aggs.filtro_temas.buckets;
+
+                const div = document.createElement('div');
+                div.className = 'aggs-item';
+                div.innerHTML = '<h6>Temas (PLN)</h6><ul id="aggTemas"></ul>';
+                divAggregations.appendChild(div);
+
+                const ul = document.getElementById('aggTemas');
+                buckets.forEach(b => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <a href="#" onclick="toggleFiltro('temas', '${b.key}')">
+                            ${b.key} <span class="badge bg-info">${b.doc_count}</span>
+                        </a>`;
+                    ul.appendChild(li);
                 });
             }
         }
@@ -375,11 +477,14 @@
                 
                 row.innerHTML = `
                     <td>${index + 1}</td>
-                    <td>${hit._id || ''}</td>
-                    <td>${hit._score ? hit._score.toFixed(4) : 'N/A'}</td>
-                    <td><small>${hit._index || ''}</small></td>
+                    <td>${source.tipo_norma || '-'}</td>
+                    <td>${source.numero_norma || '-'}</td>
+                    <td>${source.anio_norma || '-'}</td>
+                    <td>${source.entidad_emisora || '-'}</td>
+                    <td>${source.titulo_norma || '-'}</td>
+                    <td>${(source.resumen || '').substring(0, 200)}...</td>
                     <td>
-                        <div class="text-truncate" style="max-width: 400px;" title="${source.contenido || source.texto || JSON.stringify(source).substring(0, 300)}">${contenidoVista}</div>
+                        <div class="text-truncate" style="max-width: 400px; white-space:nowrap; overflow:hidden; "title="${source.contenido || source.texto || JSON.stringify(source).substring(0, 300)}">${contenidoVista}</div>
                         <button class="btn btn-sm btn-link mt-1" onclick="mostrarDetalle(${index})" data-bs-toggle="modal" data-bs-target="#modalDetalle">
                             Ver completo
                         </button>
@@ -393,6 +498,69 @@
         function mostrarHits(hits) {
             mostrarHitsOriginal(hits);
         }
+
+        //Función para alternar filtros (activar/desactivar)
+        function toggleFiltro(tipo, valor) {
+
+            // Normalizar arreglos
+            if (!Array.isArray(filtrosActivos[tipo])) {
+                filtrosActivos[tipo] = [];
+            }
+
+            // Si ya existe → quitar
+            const idx = filtrosActivos[tipo].indexOf(valor);
+            if (idx >= 0) {
+                filtrosActivos[tipo].splice(idx, 1);
+            } 
+            // Si no existe → agregar
+            else {
+                filtrosActivos[tipo].push(valor);
+            }
+
+            // Ejecutar nueva búsqueda con filtros incluidos
+            ejecutarBusqueda();
+        }
+
+        // Ejecutar búsqueda usando los filtros activos + texto actual
+        function ejecutarBusqueda() {
+            const textoBuscar = document.getElementById('textoBuscar').value.trim();
+
+            if (!textoBuscar) {
+                return; // no ejecutar si no hay texto
+            }
+
+            document.getElementById('divResultados').style.display = 'none';
+            document.getElementById('divError').style.display = 'none';
+            document.getElementById('div_cargando').style.display = 'block';
+
+            fetch('/buscar-elastic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    texto: textoBuscar,
+                    campo: '_all',
+                    filtros: filtrosActivos
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('div_cargando').style.display = 'none';
+
+                if (data.success) {
+                    mostrarResultados(data);
+                } else {
+                    mostrarError(data.error || 'Error desconocido');
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                document.getElementById('div_cargando').style.display = 'none';
+                mostrarError("Error al realizar la búsqueda");
+            });
+        }
+
+
+
     </script>
 
     <!-- Modal para mostrar detalle completo -->

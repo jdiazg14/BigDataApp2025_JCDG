@@ -1,15 +1,15 @@
+import pandas as pd
+import numpy as np
+import re
 import spacy
 import nltk
 from nltk.corpus import stopwords
 from collections import Counter
-import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
-import pandas as pd
 from datetime import datetime
-import re
 from typing import List, Dict, Tuple, Optional
 import warnings
 warnings.filterwarnings('ignore')
@@ -41,6 +41,8 @@ class PLN:
         self.nlp = None
         self.model_embeddings = None
         self.stopwords_es = None
+        self.ner_legal = None
+        self.embedder = None
         
         if cargar_modelos:
             self._cargar_modelos()
@@ -75,6 +77,13 @@ class PLN:
         except LookupError:
             nltk.download('stopwords', quiet=True)
             self.stopwords_es = set(stopwords.words('spanish'))
+
+        # Embeddings para encabezado
+        try:
+            self.embedder = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+        except:
+            print("Error cargando embedder para encabezado")
+            self.embedder = None
     
     def extraer_entidades(self, texto: str) -> Dict[str, List[str]]:
         """
@@ -414,3 +423,135 @@ class PLN:
             "temas": self.extraer_temas(texto[:500000]),  # temas solo sobre parte inicial
             "resumen": resumen_total.strip()
         }
+    
+    def _normalizar_fecha(self, texto):
+        if not texto:
+            return None
+
+        import re
+        t = texto.lower().replace("/", "-").strip()
+
+        MESES = {
+            "enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
+            "julio":7,"agosto":8,"septiembre":9,"setiembre":9,"octubre":10,
+            "noviembre":11,"diciembre":12,
+            "ene":1,"feb":2,"mar":3,"abr":4,"may":5,"jun":6,
+            "jul":7,"ago":8,"sep":9,"oct":10,"nov":11,"dic":12
+        }
+
+        # Formato “07 jul 2025”
+        m = re.match(r"(\d{1,2})\s+([a-záéíóú]+)\s+(\d{2,4})", t)
+        if m:
+            d = int(m.group(1))
+            mes = MESES.get(m.group(2), None)
+            y = int(m.group(3))
+            if y < 100: y += 2000
+            if mes:
+                return f"{y:04d}-{mes:02d}-{d:02d}"
+
+        # Formato “20-marzo-26”
+        m = re.match(r"(\d{1,2})-(\w+)-(\d{1,4})", t)
+        if m:
+            d = int(m.group(1))
+            mes = MESES.get(m.group(2), None)
+            y = int(m.group(3))
+            if y < 100: y += 2000
+            if mes:
+                return f"{y:04d}-{mes:02d}-{d:02d}"
+
+        return None
+    
+    def extraer_metadatos_norma(self, texto):
+        """
+        Extrae tipo, número, fecha, año y entidad emisora de una norma usando:
+        - spaCy NER (es_core_news_lg)
+        - Heurísticas legales robustas
+        """
+
+        # Tomar las primeras líneas (encabezado típico de normas)
+        lineas = texto.split("\n")
+        encabezado = "\n".join(lineas[:20]).upper()
+
+        meta = {
+            "tipo_norma": None,
+            "numero_norma": None,
+            "anio_norma": None,
+            "entidad_emisora": None,
+            "fecha_documento": None,
+            "titulo_norma": None
+        }
+
+        # NER spaCy
+        doc = self.nlp(encabezado)
+        ents = [(ent.label_, ent.text) for ent in doc.ents]
+
+        # ENTIDAD EMISORA
+        for label, val in ents:
+            if label == "ORG" and len(val) > 5:
+                meta["entidad_emisora"] = val.upper()
+                break
+
+        # FECHAS por NER
+        fechas_detectadas = [val for (lab, val) in ents if lab == "DATE"]
+
+        for f in fechas_detectadas:
+            print(" → Fecha detectada (NER):", f)
+            fecha_norm = self._normalizar_fecha(f)
+            if fecha_norm:
+                print("   → Fecha normalizada:", fecha_norm)
+                meta["fecha_documento"] = fecha_norm
+                meta["anio_norma"] = int(fecha_norm[:4])
+                break
+
+        #  BÚSQUEDA GLOBAL DE FECHA
+        if not meta["fecha_documento"]:
+            # Buscar formato "26 de marzo de 2019"
+            m = re.search(r"\b(\d{1,2})\s+de\s+([a-zA-ZÁÉÍÓÚáéíóú]+)\s+de\s+(\d{4})", texto, re.IGNORECASE)
+            if m:
+                dia = m.group(1)
+                mes = m.group(2)
+                anio = m.group(3)
+                meta["fecha_documento"] = self._normalizar_fecha(f"{dia}-{mes}-{anio}")
+                meta["anio_norma"] = int(anio)
+
+        # Segundo patrón tipo "Bogotá, D.C., 26 de marzo de 2019"
+        if not meta["fecha_documento"]:
+            m = re.search(r"\b(\d{1,2}\s+de\s+[a-zA-ZÁÉÍÓÚáéíóú]+\s+\d{4})", texto, re.IGNORECASE)
+            if m:
+                meta["fecha_documento"] = self._normalizar_fecha(m.group(1))
+
+        # Tercer patrón: fechas largas tipo "BOGOTÁ, D.C, 26 DE MARZO DE 2019"
+        if not meta["fecha_documento"]:
+            m = re.search(r"(\d{1,2}\s+DE\s+[A-ZÁÉÍÓÚ]+\s+DE\s+\d{4})", texto)
+            if m:
+                meta["fecha_documento"] = self._normalizar_fecha(m.group(1))
+        
+        # TIPO DE NORMA
+        tipos = ["DECRETO", "RESOLUCIÓN", "RESOLUCION", "LEY", "CIRCULAR", "ACUERDO"]
+        for t in tipos:
+            if t in encabezado:
+                meta["tipo_norma"] = "RESOLUCIÓN" if t == "RESOLUCION" else t
+                break
+
+        # NÚMERO DE NORMA
+        m = re.search(r"(DECRETO|RESOLUCIÓN|RESOLUCION|LEY)\s+N?O?\.?\s*(\d{2,5})", encabezado)
+        if m:
+            meta["numero_norma"] = int(m.group(2))
+        else:
+            m = re.search(r"\b(\d{2,5})\b", encabezado)
+            if m:
+                meta["numero_norma"] = int(m.group(1))
+
+        # AÑO DE NORMA si falta
+        if not meta["anio_norma"]:
+            m = re.search(r"\b(19\d{2}|20\d{2})\b", encabezado)
+            if m:
+                meta["anio_norma"] = int(m.group(1))
+
+        # TÍTULO
+        for l in lineas[:30]:
+            if l.strip().lower().startswith(("por el cual", "por la cual")):
+                meta["titulo_norma"] = l.strip()
+                break
+
+        return meta

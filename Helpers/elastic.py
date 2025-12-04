@@ -185,6 +185,7 @@ class ElasticSearch:
                     '_index': index,
                     '_source': doc
                 }
+                #print("--- Documento enviado a bulk ---", accion)
                 acciones.append(accion)
             
             # Ejecutar bulk
@@ -427,7 +428,7 @@ class ElasticSearch:
                 return False
 
             total = respuesta.get("total", 0)
-            print(f"[INFO] Hash '{hash_archivo}' encontrado {total} veces en índice '{index}'.")
+            #print(f"[INFO] Hash '{hash_archivo}' encontrado {total} veces en índice '{index}'.")
             return total > 0
 
         except Exception as e:

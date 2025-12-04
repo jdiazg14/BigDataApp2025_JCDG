@@ -1,4 +1,5 @@
 import os
+import re
 import zipfile
 import requests
 import json
@@ -9,7 +10,13 @@ from typing import Dict, List
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import hashlib
-import time
+
+MESES_ES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+    "septiembre": 9, "setiembre": 9,  
+    "octubre": 10, "noviembre": 11, "diciembre": 12
+}
 
 class Funciones:
     @staticmethod
