@@ -106,7 +106,7 @@
         </div>
 
         <!-- Resultados y tabla de archivos -->
-        <div id="seccion_resultados buscador_1" style="display: none;">
+        <div id="seccion_resultados" style="display: none;">
             <div class="card mb-4">
                 <div class="card-body">
                     <h5 class="card-title">4. Archivos Procesados</h5>
@@ -306,7 +306,7 @@
             .catch(error => {
                 ocultarCargando();
                 console.error('Error:', error);
-                alert('Error al procesar Web Scraping');
+                alert('Error al procesar Web Scraping' + error);
             });
         }
 

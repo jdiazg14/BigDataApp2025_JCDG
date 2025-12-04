@@ -2,7 +2,7 @@ import os
 import time
 import requests
 from urllib.parse import urljoin
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError
 
 class WebScrapingMinAgricultura:
 
@@ -108,6 +108,7 @@ class WebScrapingMinAgricultura:
             encontrados = self._extraer_enlaces_categoria(tipo_id)
             enlaces.extend(encontrados)
         
+
         # Una sola categoría (para pruebas)
         #enlaces = self._extraer_enlaces_categoria(5)
 
