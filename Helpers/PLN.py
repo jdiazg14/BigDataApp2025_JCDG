@@ -424,7 +424,7 @@ class PLN:
             "resumen": resumen_total.strip()
         }
     
-    def _normalizar_fecha(self, texto):
+    def normalizar_fecha(self, texto):
         if not texto:
             return None
 
@@ -496,7 +496,7 @@ class PLN:
 
         for f in fechas_detectadas:
             print(" → Fecha detectada (NER):", f)
-            fecha_norm = self._normalizar_fecha(f)
+            fecha_norm = self.normalizar_fecha(f)
             if fecha_norm:
                 print("   → Fecha normalizada:", fecha_norm)
                 meta["fecha_documento"] = fecha_norm
@@ -511,20 +511,20 @@ class PLN:
                 dia = m.group(1)
                 mes = m.group(2)
                 anio = m.group(3)
-                meta["fecha_documento"] = self._normalizar_fecha(f"{dia}-{mes}-{anio}")
+                meta["fecha_documento"] = self.normalizar_fecha(f"{dia}-{mes}-{anio}")
                 meta["anio_norma"] = int(anio)
 
         # Segundo patrón tipo "Bogotá, D.C., 26 de marzo de 2019"
         if not meta["fecha_documento"]:
             m = re.search(r"\b(\d{1,2}\s+de\s+[a-zA-ZÁÉÍÓÚáéíóú]+\s+\d{4})", texto, re.IGNORECASE)
             if m:
-                meta["fecha_documento"] = self._normalizar_fecha(m.group(1))
+                meta["fecha_documento"] = self.normalizar_fecha(m.group(1))
 
         # Tercer patrón: fechas largas tipo "BOGOTÁ, D.C, 26 DE MARZO DE 2019"
         if not meta["fecha_documento"]:
             m = re.search(r"(\d{1,2}\s+DE\s+[A-ZÁÉÍÓÚ]+\s+DE\s+\d{4})", texto)
             if m:
-                meta["fecha_documento"] = self._normalizar_fecha(m.group(1))
+                meta["fecha_documento"] = self.normalizar_fecha(m.group(1))
         
         # TIPO DE NORMA
         tipos = ["DECRETO", "RESOLUCIÓN", "RESOLUCION", "LEY", "CIRCULAR", "ACUERDO"]

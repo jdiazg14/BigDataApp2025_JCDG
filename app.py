@@ -582,6 +582,7 @@ def cargar_documentos_elastic():
             print(f"\nTotal de archivos a procesar con PLN: {total_archivos}")
 
             for i, archivo in enumerate(archivos_filtrados, start=1):
+                # ----- Extracción de texto -----
                 ruta = archivo.get('ruta')
                 hash_archivo = archivo.get('hash_archivo')
                 print(f"\n--- Procesando archivo [{i} / {total_archivos}]: {ruta} ---")
@@ -613,31 +614,11 @@ def cargar_documentos_elastic():
                         except:
                             pass
                 
-                if not texto or len(texto.strip()) < 50:
+                if not texto or len(texto.strip()) < 50:        # si no se extrajo texto suficiente, omitir
                     continue
                 
-                # Procesar con PLN
+                # ------ Procesar con PLN -------
                 try:
-                    '''
-                    resumen = pln.generar_resumen(texto, num_oraciones=3)
-                    entidades = pln.extraer_entidades(texto)
-                    temas = pln.extraer_temas(texto, top_n=10)
-
-                    # Crear documento
-                    documento = {
-                        'texto': texto,
-                        'fecha': datetime.now().isoformat(),
-                        'ruta': ruta,
-                        'nombre_archivo': archivo.get('nombre', ''),
-                        'hash_archivo': hash_archivo,
-                        'resumen': resumen,
-                        'entidades': entidades,
-                        'temas': [{'palabra': palabra, 'relevancia': relevancia} for palabra, relevancia in temas]
-                    }
-                    
-                    documentos.append(documento)
-                    '''
-                    
                     # Procesar con PLN usando chunks
                     print(" → Procesando texto con PLN (método chunks)...")
                     resultado_pln = pln.procesar_texto_largo(texto)
@@ -655,7 +636,7 @@ def cargar_documentos_elastic():
                     meta = pln.extraer_metadatos_norma(texto)
 
                     #print("fecha encontrada (raw):", meta.get("fecha_documento"))
-                    fecha_normalizada = pln._normalizar_fecha(meta.get("fecha_documento"))
+                    fecha_normalizada = pln.normalizar_fecha(meta.get("fecha_documento"))
                     #print("fecha normalizada:", fecha_normalizada)
 
                     # Crear documento
@@ -676,7 +657,8 @@ def cargar_documentos_elastic():
                         'fecha_carga': datetime.now().isoformat()
                     }
 
-                    documentos.append(documento)                    
+                    documentos.append(documento)      
+                                 
                 
                 except Exception as e:
                     print(f"Error al procesar {archivo.get('nombre')}: {e}")
@@ -684,7 +666,7 @@ def cargar_documentos_elastic():
             
             pln.close()
         
-        # Si no hay documentos nuevos, terminar sin error
+        # Si no hay documentos a insertar en elastic, terminar sin error
         if not documentos:
             #return jsonify({'success': False, 'error': 'No se pudieron procesar documentos'}), 400
             print("No hay documentos nuevos para procesar (todos duplicados).")
