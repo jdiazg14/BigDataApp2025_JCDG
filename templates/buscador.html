@@ -11,8 +11,8 @@
             margin-top: 2rem;
         }
         .aggs-list {
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
+            background-color: #faf7f2;
+            border: 1px solid #d2c7b8;
             border-radius: 0.25rem;
             padding: 1rem;
             max-height: 600px;
@@ -46,8 +46,8 @@
             overflow-y: auto;
         }
         .json-view {
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
+            background-color: #d8e3ea;
+            border: 1px solid #b5c8d4;
             border-radius: 0.25rem;
             padding: 0.5rem;
             font-family: 'Courier New', monospace;
@@ -68,7 +68,7 @@
     <header class="header">
         <div class="container">
             <div class="d-flex justify-content-between align-items-center">
-                <h1 class="h3 mb-0">BigData-MiProyecto</h1>
+                <h1 class="h3 mb-0">Min Agricultura Big Data</h1>
                 <nav>
                     <ul class="nav">
                         <li class="nav-item"><a class="nav-link" href="/">Inicio</a></li>
@@ -81,21 +81,22 @@
         </div>
     </header>
 
+<main class="main">
     <div class="container-fluid mt-4">
         <h1 class="text-center mb-4">Buscador de documentos</h1>
         
         <!-- Formulario de búsqueda -->
-        <div class="card mb-4">
+        <div class="card mb-4 buscador_1">
             <div class="card-body">
                 <form id="formBuscar" onsubmit="buscar(event)">
                     <div class="row g-3 align-items-end">
                         <div class="col-md-10">
-                            <label for="textoBuscar" class="form-label">Texto a buscar</label>
+                            <label for="textoBuscar" class="form-label input_texto">Texto a buscar</label>
                             <input type="text" class="form-control" id="textoBuscar" name="texto" 
                                    placeholder="Ingrese el texto que desea buscar..." required>
                         </div>
                         <div class="col-md-2">
-                            <button type="submit" class="btn btn-primary w-100">
+                            <button type="submit" class="btn btn-primary w-100 boton_buscar">
                                 <i class="bi bi-search"></i> Buscar
                             </button>
                         </div>
@@ -115,10 +116,10 @@
         <!-- Resultados -->
         <div id="divResultados" class="resultados-container" style="display: none;">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header resultados_busqueda">
                     <h5 class="mb-0">Resultados de la búsqueda - Total encontrado: <span id="totalResultados">0</span></h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body resultados_busqueda">
                     <div class="row">
                         <!-- Columna 1: Aggregations (20%) -->
                         <div class="col-md-3">
@@ -161,8 +162,8 @@
             <strong>Error:</strong> <span id="mensajeError"></span>
         </div>
     </div>
-
-    <footer class="text-center mt-5">
+</main>
+    <footer class="footer text-center mt-5">
         <p class="mb-0">Creado por {{ creador }}</p>
         <p class="mb-0" id="current-year"></p>
         <p class="mb-0" id="version_app">{{ version }}</p>
