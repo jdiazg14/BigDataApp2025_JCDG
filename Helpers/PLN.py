@@ -3,12 +3,12 @@ import numpy as np
 import re
 import spacy
 import nltk
+import torch
 from nltk.corpus import stopwords
 from collections import Counter
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sentence_transformers import SentenceTransformer
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer, AutoModel
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 import warnings
@@ -40,6 +40,9 @@ class PLN:
         self.modelo_embeddings_nombre = modelo_embeddings
         self.nlp = None
         self.model_embeddings = None
+        self.embedding_backend = None
+        self.embedding_tokenizer = None
+        self.embedding_model = None
         self.stopwords_es = None
         self.ner_legal = None
         self.embedder = None
@@ -64,13 +67,7 @@ class PLN:
                 print("Error: No se pudo cargar ningún modelo de spaCy")
                 self.nlp = None
         
-        try:
-            print("Cargando modelo de embeddings...")
-            self.model_embeddings = SentenceTransformer(self.modelo_embeddings_nombre)
-            print(f"Modelo de embeddings '{self.modelo_embeddings_nombre}' cargado correctamente")
-        except Exception as e:
-            print(f"Error al cargar modelo de embeddings: {e}")
-            self.model_embeddings = None
+        self._cargar_modelo_embeddings()
         
         try:
             self.stopwords_es = set(stopwords.words('spanish'))
@@ -78,12 +75,41 @@ class PLN:
             nltk.download('stopwords', quiet=True)
             self.stopwords_es = set(stopwords.words('spanish'))
 
-        # Embeddings para encabezado
+        # Reutiliza el mismo backend para encabezados
+        self.embedder = self.model_embeddings
+
+    def _resolver_nombre_modelo_hf(self, nombre_modelo: str) -> str:
+        """Normaliza el nombre del modelo para APIs modernas de Hugging Face."""
+        if '/' in nombre_modelo:
+            return nombre_modelo
+        return f"sentence-transformers/{nombre_modelo}"
+
+    def _cargar_modelo_embeddings(self):
+        """Carga embeddings con fallback moderno si sentence-transformers falla."""
+        print("Cargando modelo de embeddings...")
+
         try:
-            self.embedder = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-        except:
-            print("Error cargando embedder para encabezado")
-            self.embedder = None
+            from sentence_transformers import SentenceTransformer
+            self.model_embeddings = SentenceTransformer(self.modelo_embeddings_nombre)
+            self.embedding_backend = 'sentence-transformers'
+            print(f"Modelo de embeddings '{self.modelo_embeddings_nombre}' cargado con sentence-transformers")
+            return
+        except Exception as e:
+            print(f"Advertencia: sentence-transformers no pudo cargarse ({e}). Se usará fallback con transformers.")
+
+        try:
+            modelo_hf = self._resolver_nombre_modelo_hf(self.modelo_embeddings_nombre)
+            self.embedding_tokenizer = AutoTokenizer.from_pretrained(modelo_hf)
+            self.embedding_model = AutoModel.from_pretrained(modelo_hf)
+            self.embedding_backend = 'transformers'
+            self.model_embeddings = self.embedding_model
+            print(f"Modelo de embeddings '{modelo_hf}' cargado con AutoModel/AutoTokenizer")
+        except Exception as e:
+            print(f"Error al cargar embeddings en fallback transformers: {e}")
+            self.embedding_backend = None
+            self.model_embeddings = None
+            self.embedding_tokenizer = None
+            self.embedding_model = None
     
     def extraer_entidades(self, texto: str) -> Dict[str, List[str]]:
         """
@@ -211,6 +237,31 @@ class PLN:
             # Fallback: devolver primeras oraciones
             return ' '.join(oraciones[:num_oraciones])
     
+    def _obtener_embeddings(self, textos: List[str]) -> np.ndarray:
+        """Genera embeddings usando sentence-transformers o fallback con transformers."""
+        if self.embedding_backend == 'sentence-transformers':
+            return self.model_embeddings.encode(textos, convert_to_numpy=True, show_progress_bar=False)
+
+        if self.embedding_backend == 'transformers' and self.embedding_model and self.embedding_tokenizer:
+            inputs = self.embedding_tokenizer(
+                textos,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors='pt'
+            )
+            with torch.no_grad():
+                outputs = self.embedding_model(**inputs)
+                token_embeddings = outputs.last_hidden_state
+                attention_mask = inputs['attention_mask'].unsqueeze(-1)
+                masked_embeddings = token_embeddings * attention_mask
+                sum_embeddings = masked_embeddings.sum(dim=1)
+                token_count = attention_mask.sum(dim=1).clamp(min=1)
+                sentence_embeddings = sum_embeddings / token_count
+            return sentence_embeddings.cpu().numpy()
+
+        raise ValueError("Modelo de embeddings no está cargado. Llama a _cargar_modelos() primero.")
+
     def calcular_similitud_semantica(self, textos: List[str]) -> pd.DataFrame:
         """
         Calcula similitud semántica usando embeddings de transformers.
@@ -229,7 +280,7 @@ class PLN:
             raise ValueError("Se necesitan al menos 2 textos para calcular similitud")
         
         # Generar embeddings
-        embeddings = self.model_embeddings.encode(textos)
+        embeddings = self._obtener_embeddings(textos)
         
         # Calcular similitud del coseno
         similitud = cosine_similarity(embeddings)

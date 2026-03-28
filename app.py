@@ -14,13 +14,14 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'clave_super_secreta_12345')
 
 # Configuración MongoDB
-MONGO_URI = os.getenv('MONGO_URI')
-MONGO_DB = os.getenv('MONGO_DB')
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
+MONGO_DB = os.getenv('MONGO_DB', 'bigdataapp')
 MONGO_COLECCION = os.getenv('MONGO_COLECCION', 'usuario_roles')
 
-# Configuración ElasticSearch Cloud
-ELASTIC_CLOUD_URL       = os.getenv('ELASTIC_CLOUD_URL')
-ELASTIC_API_KEY         = os.getenv('ELASTIC_API_KEY')
+# Configuración ElasticSearch local
+ELASTIC_URL             = os.getenv('ELASTIC_URL', 'http://localhost:9200')
+ELASTIC_USER            = os.getenv('ELASTIC_USER', 'elastic')
+ELASTIC_PASSWORD        = os.getenv('ELASTIC_PASSWORD')
 #ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_cuentos')
 ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_minagricultura')
 
@@ -33,7 +34,8 @@ CREATOR_APP = "JuanCDG"
 
 # Inicializar conexiones
 mongo = MongoDB(MONGO_URI, MONGO_DB)
-elastic = ElasticSearch(ELASTIC_CLOUD_URL, ELASTIC_API_KEY)
+mongo.verificar_colecciones(MONGO_COLECCION)
+elastic = ElasticSearch(ELASTIC_URL, ELASTIC_USER, ELASTIC_PASSWORD)
 
 # ==================== RUTAS ====================
 @app.route('/')
@@ -760,15 +762,8 @@ if __name__ == '__main__':
     print("\n" + "="*50)
     print("VERIFICANDO CONEXIONES")
 
-    if mongo.test_connection():
-        print("✅ MongoDB Atlas: Conectado")
-    else:
-        print("❌ MongoDB Atlas: Error de conexión")
-    
-    if elastic.test_connection():
-        print("✅ ElasticSearch Cloud: Conectado")
-    else:
-        print("❌ ElasticSearch Cloud: Error de conexión")
+    mongo.test_connection()
+    elastic.test_connection()
 
     # Ejecutar la aplicación (localmente para pruebas)
     app.run(debug=True, host='0.0.0.0', port=5000)

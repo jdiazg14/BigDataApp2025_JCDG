@@ -1,30 +1,42 @@
 from elasticsearch import Elasticsearch
 from typing import Dict, List, Optional, Any
 import json
+import os
 
 class ElasticSearch:
-    def __init__(self, cloud_url: str, api_key: str):
+    def __init__(self, elastic_url: Optional[str] = None, elastic_user: Optional[str] = None, elastic_password: Optional[str] = None):
         """
-        Inicializa conexión a ElasticSearch Cloud
+        Inicializa conexión a ElasticSearch local o remota
         
         Args:
-            cloud_url: URL del cluster de Elastic Cloud
-            api_key: API Key para autenticación
+            elastic_url: URL de ElasticSearch
+            elastic_user: Usuario para autenticación básica
+            elastic_password: Contraseña para autenticación básica
         """
+        elastic_url = elastic_url or os.getenv('ELASTIC_URL', 'http://localhost:9200')
+        elastic_user = elastic_user or os.getenv('ELASTIC_USER', 'elastic')
+        elastic_password = elastic_password or os.getenv('ELASTIC_PASSWORD', '')
+
+        # verify_certs y ssl_show_warn solo aplican si el esquema es https
+        # Con http:// el cliente los ignora sin error
         self.client = Elasticsearch(
-            cloud_url,
-            api_key=api_key,
-            verify_certs=True
+            elastic_url,
+            basic_auth=(elastic_user, elastic_password),
+            verify_certs=False,
+            ssl_show_warn=False
         )
+        self.url = elastic_url
         
     def test_connection(self) -> bool:
-        """Prueba la conexión a ElasticSearch"""
+        """Prueba la conexión a Elasticsearch y muestra el entorno detectado"""
         try:
             info = self.client.info()
-            print(f"✅ Conectado a Elastic: {info['version']['number']}")
+            entorno = "Local" if any(h in self.url for h in ('localhost', '127.0.0.1')) else "Cloud"
+            print(f"✅ Elasticsearch {entorno}: Conectado (v{info['version']['number']})")
             return True
         except Exception as e:
-            print(f"❌ Error al conectar con Elastic: {e}")
+            entorno = "Local" if any(h in self.url for h in ('localhost', '127.0.0.1')) else "Cloud"
+            print(f"❌ Elasticsearch {entorno}: Error al conectar → {e}")
             return False
     
     def ejecutar_comando(self, comando_json: str) -> Dict:

@@ -1,33 +1,83 @@
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, OperationFailure
-import hashlib
+from werkzeug.security import generate_password_hash, check_password_hash
+import warnings
+import os
 from typing import Dict, List, Optional
 
+LOCAL_MONGO_URI = 'mongodb://localhost:27017/'
+
 class MongoDB:
-    def __init__(self, uri: str, db_name: str):
-        """Inicializa conexión a MongoDB"""
-        self.client = MongoClient(uri)
+    def __init__(self, uri: str = None, db_name: str = None):
+        """Inicializa conexión a MongoDB.
+
+        Si no se proporciona uri, usa la instancia local (localhost:27017).
+        La base de datos y las colecciones se crean automáticamente por MongoDB
+        en la primera operación de escritura; este constructor solo advierte si
+        aún no existen.
+        """
+        env_uri = os.getenv('MONGO_URI')
+        env_db_name = os.getenv('MONGO_DB', 'bigdataapp')
+        self.default_collection = os.getenv('MONGO_COLECCION', 'usuario_roles')
+
+        effective_uri = uri or env_uri or LOCAL_MONGO_URI
+        db_name = db_name or env_db_name
+        if not uri:
+            warnings.warn(
+                f"MONGO_URI no configurado explícitamente. Usando URI: {effective_uri}",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # serverSelectionTimeoutMS evita que la app se bloquee si MongoDB no está activo
+        self.client = MongoClient(effective_uri, serverSelectionTimeoutMS=5000)
         self.db = self.client[db_name]
-        
-    def test_connection(self) -> bool:
-        """Prueba la conexión a MongoDB"""
+        self.uri = effective_uri
+
+        # Validar la conexión de inmediato para detectar problemas al arrancar
+        if not self.test_connection(log=False):
+            raise ConnectionFailure(
+                f"No se pudo conectar a MongoDB en '{effective_uri}'. "
+                "Verifique que el servicio esté activo (Get-Service -Name MongoDB)."
+            )
+
+    def test_connection(self, log: bool = True) -> bool:
+        """Prueba la conexión a MongoDB y registra el entorno detectado."""
+        entorno = "Local" if any(h in self.uri.lower() for h in ('localhost', '127.0.0.1')) else "Atlas (Cloud)"
         try:
             self.client.admin.command('ping')
+            if log:
+                print(f"✅ MongoDB {entorno}: Conectado")
             return True
-        except ConnectionFailure:
+        except ConnectionFailure as e:
+            if log:
+                print(f"❌ MongoDB {entorno}: Error al conectar -> {e}")
             return False
+
+    def verificar_colecciones(self, *nombres_coleccion: str) -> None:
+        """Advierte si alguna de las colecciones indicadas no existe todavía en la base de datos.
+
+        MongoDB crea las colecciones en la primera escritura, por lo que este método
+        es puramente informativo: registra un aviso para que el desarrollador sepa
+        que la colección se creará cuando se inserte el primer documento.
+        """
+        existentes = self.db.list_collection_names()
+        for nombre in nombres_coleccion:
+            if nombre not in existentes:
+                warnings.warn(
+                    f"[MongoDB] La colección '{nombre}' no existe en '{self.db.name}'. "
+                    "Se creará automáticamente en la primera operación de escritura.",
+                    UserWarning,
+                    stacklevel=2,
+                )
     
     def validar_usuario(self, usuario: str, password: str, coleccion: str) -> Optional[Dict]:
-        """Valida usuario y contraseña con MD5"""
+        """Valida usuario y contraseña con hash werkzeug"""
         try:
-            
-            #password_md5 = hashlib.md5(password.encode()).hexdigest()
-            password_md5 =password  # Deshabilitado MD5 para pruebas
-            user = self.db[coleccion].find_one({
-                'usuario': usuario,
-                'password': password_md5
-            })
-            return user
+            user = self.db[coleccion].find_one({'usuario': usuario})
+            if user and check_password_hash(user.get('password', ''), password):
+                return user
+            return None
         except Exception as e:
             print(f"Error al validar usuario: {e}")
             return None
@@ -49,13 +99,11 @@ class MongoDB:
             return []
     
     def crear_usuario(self, usuario: str, password: str, permisos: Dict, coleccion: str) -> bool:
-        """Crea un nuevo usuario"""
+        """Crea un nuevo usuario con contraseña encriptada"""
         try:
-            #password_md5 = hashlib.md5(password.encode()).hexdigest()
-            password_plain = password  # Deshabilitado MD5 para pruebas (consistente con validar_usuario)
             documento = {
                 'usuario': usuario,
-                'password': password_plain,
+                'password': generate_password_hash(password),
                 'permisos': permisos
             }
             self.db[coleccion].insert_one(documento)
@@ -67,10 +115,8 @@ class MongoDB:
     def actualizar_usuario(self, usuario: str, nuevos_datos: Dict, coleccion: str) -> bool:
         """Actualiza un usuario existente"""
         try:
-            # Mantener password sin MD5 (consistente con validar_usuario y crear_usuario)
-            # if 'password' in nuevos_datos:
-            #     nuevos_datos['password'] = hashlib.md5(nuevos_datos['password'].encode()).hexdigest()
-            
+            if 'password' in nuevos_datos:
+                nuevos_datos['password'] = generate_password_hash(nuevos_datos['password'])
             self.db[coleccion].update_one(
                 {'usuario': usuario},
                 {'$set': nuevos_datos}

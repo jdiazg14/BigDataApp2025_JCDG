@@ -102,15 +102,15 @@ class WebScrapingMinAgricultura:
         self.start()
         enlaces = []
 
-        
+        '''
         # Iterar sobre todas las categorías
         for tipo_id in self.categorias.keys():
             encontrados = self._extraer_enlaces_categoria(tipo_id)
             enlaces.extend(encontrados)
-        
+        '''
 
         # Una sola categoría (para pruebas)
-        #enlaces = self._extraer_enlaces_categoria(5)
+        enlaces = self._extraer_enlaces_categoria(5)
 
         self.stop()
 
