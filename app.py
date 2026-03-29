@@ -1,9 +1,14 @@
 from flask import Flask, render_template, request, redirect, url_for,jsonify, session, flash
 from dotenv import load_dotenv
 import os
+import glob
+import time
+import subprocess
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from Helpers import MongoDB, ElasticSearch, Funciones, WebScrapingMinAgricultura, PLN
+import requests
+from requests.exceptions import ConnectionError as RequestsConnectionError, RequestException
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -22,7 +27,6 @@ MONGO_COLECCION = os.getenv('MONGO_COLECCION', 'usuario_roles')
 ELASTIC_URL             = os.getenv('ELASTIC_URL', 'http://localhost:9200')
 ELASTIC_USER            = os.getenv('ELASTIC_USER', 'elastic')
 ELASTIC_PASSWORD        = os.getenv('ELASTIC_PASSWORD')
-#ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_cuentos')
 ELASTIC_INDEX_DEFAULT   = os.getenv('ELASTIC_INDEX_DEFAULT', 'index_minagricultura')
 
 #Carpeta de descargas
@@ -32,7 +36,90 @@ UPLOAD_DIR = os.getenv('UPLOAD_DIR', 'static/uploads')
 VERSION_APP = "2.0.0"
 CREATOR_APP = "JuanCDG"
 
+
+def _find_elasticsearch_bat_path():
+    """Busca elasticsearch.bat en rutas comunes o usando variable de entorno."""
+    path_from_env = os.getenv("ELASTICSEARCH_BAT_PATH")
+    if path_from_env and os.path.isfile(path_from_env):
+        return path_from_env
+
+    drive = os.path.splitdrive(os.path.abspath(__file__))[0] or "C:"
+    search_patterns = [
+        os.path.join(drive + "\\", "elasticsearch*", "bin", "elasticsearch.bat"),
+        os.path.join(drive + "\\", "Program Files", "elasticsearch*", "bin", "elasticsearch.bat"),
+    ]
+
+    matches = []
+    for pattern in search_patterns:
+        matches.extend(glob.glob(pattern))
+
+    return sorted(matches)[-1] if matches else None
+
+
+def ensure_elasticsearch_ready(max_wait_seconds=15):
+    """Verifica Elasticsearch local y lo inicia automáticamente si no responde."""
+    health_url = "http://localhost:9200"
+    starter_process = None
+    startup_log_path = os.path.join("static", "uploads", "elasticsearch_startup.log")
+
+    try:
+        requests.get(health_url, timeout=1.5)
+        print("✅ Elasticsearch local ya está respondiendo en http://localhost:9200")
+        return
+    except RequestsConnectionError:
+        elasticsearch_bat = _find_elasticsearch_bat_path()
+        if not elasticsearch_bat:
+            raise RuntimeError(
+                "No se encontró elasticsearch.bat automáticamente. "
+                "Indique la ruta exacta en la variable ELASTICSEARCH_BAT_PATH."
+            )
+
+        print(f"⚠️ Elasticsearch no está activo. Iniciando: {elasticsearch_bat}")
+        os.makedirs(os.path.dirname(startup_log_path), exist_ok=True)
+        log_file = open(startup_log_path, "a", encoding="utf-8")
+        log_file.write("\n" + "=" * 60 + "\n")
+        log_file.write(f"Inicio de intento: {datetime.now().isoformat()}\n")
+        log_file.flush()
+
+        starter_process = subprocess.Popen(
+            ["cmd.exe", "/c", elasticsearch_bat],
+            cwd=os.path.dirname(elasticsearch_bat),
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            close_fds=False,
+        )
+    except RequestException as e:
+        print(f"⚠️ Elasticsearch respondió con un error temporal: {e}")
+
+    deadline = time.monotonic() + max_wait_seconds
+    while time.monotonic() < deadline:
+        if starter_process and starter_process.poll() is not None:
+            log_tail = ""
+            if os.path.exists(startup_log_path):
+                with open(startup_log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+                    log_tail = "".join(lines[-20:]).strip()
+
+            raise RuntimeError(
+                "El proceso de Elasticsearch terminó antes de quedar disponible en el puerto 9200. "
+                f"Revise el log en '{startup_log_path}'. "
+                f"Últimas líneas:\n{log_tail if log_tail else '(sin salida en log)'}"
+            )
+
+        try:
+            requests.get(health_url, timeout=1.5)
+            print("✅ Elasticsearch local respondió correctamente. Continuando arranque...")
+            return
+        except RequestsConnectionError:
+            time.sleep(1)
+        except RequestException:
+            time.sleep(1)
+
+    raise RuntimeError("Elasticsearch no respondió en el puerto 9200 dentro de 15 segundos.")
+
 # Inicializar conexiones
+ensure_elasticsearch_ready(max_wait_seconds=15)
 mongo = MongoDB(MONGO_URI, MONGO_DB)
 mongo.verificar_colecciones(MONGO_COLECCION)
 elastic = ElasticSearch(ELASTIC_URL, ELASTIC_USER, ELASTIC_PASSWORD)
