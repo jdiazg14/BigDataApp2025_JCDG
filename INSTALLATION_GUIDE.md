@@ -13,6 +13,17 @@ Incluye configuración para desarrollo local y para despliegues en producción/c
 
 ---
 
+## 0. Requisitos del Sistema (Python)
+
+Antes de continuar, verifique que tiene instalado **Python 3.10 o superior**.
+
+Descarga oficial:
+[https://www.python.org/downloads/](https://www.python.org/downloads/)
+
+> **Importante (Windows):** Durante la instalación, marque obligatoriamente la casilla **"Add Python to PATH"**. Si no lo hace, los comandos `python` y `pip` no funcionarán en la terminal.
+
+---
+
 ## 1. Requisitos de Software
 
 ### 1.1 MongoDB Community Server
@@ -150,12 +161,15 @@ python -c "import spacy; nlp = spacy.load('es_core_news_sm'); print('Modelo carg
 ## 5. Variables de Entorno (.env)
 
 Cree un archivo `.env` en la raíz del proyecto. Use uno de los siguientes perfiles según su entorno.
+Copie y ajuste estos valores en su archivo `.env` local.
+
+> **Nota de seguridad:** El archivo `.env` contiene credenciales y secretos. **Nunca** debe subirse al repositorio.
 
 ### 5.1 Configuración para Desarrollo Local
 
 ```env
 # Flask
-SECRET_KEY=tu_clave_secreta_super_segura_12345
+SECRET_KEY=<TU_LLAVE_SECRETA_ALEATORIA>
 UPLOAD_DIR=static/uploads
 
 # MongoDB local
@@ -170,15 +184,15 @@ ELASTIC_PASSWORD=tu_password_local
 ELASTIC_INDEX_DEFAULT=index_minagricultura
 
 # Usuario administrador inicial
-APP_USER_ADMIN=admin
-APP_USER_ADMIN_PASSWORD=admin123
+APP_USER_ADMIN=<TU_USUARIO>
+APP_USER_ADMIN_PASSWORD=<TU_CONTRASEÑA>
 ```
 
 ### 5.2 Configuración para Producción/Cloud
 
 ```env
 # Flask
-SECRET_KEY=clave_fuerte_de_produccion
+SECRET_KEY=<TU_LLAVE_SECRETA_ALEATORIA>
 UPLOAD_DIR=static/uploads
 
 # MongoDB Atlas
@@ -193,8 +207,8 @@ ELASTIC_PASSWORD=tu_password_cloud
 ELASTIC_INDEX_DEFAULT=index_minagricultura
 
 # Usuario administrador inicial
-APP_USER_ADMIN=admin
-APP_USER_ADMIN_PASSWORD=cambiar_este_valor
+APP_USER_ADMIN=<TU_USUARIO>
+APP_USER_ADMIN_PASSWORD=<TU_CONTRASEÑA>
 ```
 
 ### 5.3 Detección automática de entorno
@@ -216,9 +230,9 @@ Antes del primer inicio de la aplicación, ejecute el script de inicialización 
 python init_db.py
 ```
 
-El script leerá la configuración de `MONGO_URI`, `MONGO_DB` y `MONGO_COLECCION` desde el archivo `.env` y creará el usuario `admin` con contraseña `admin123` almacenada con hash seguro (`werkzeug.security`). Si el usuario ya existe, el script no realiza ningún cambio (es idempotente).
+El script leerá la configuración de `APP_USER_ADMIN` y `APP_USER_ADMIN_PASSWORD` desde el archivo `.env` y creará ese usuario con contraseña almacenada con hash seguro (`werkzeug.security`). Si el usuario ya existe, el script no realiza ningún cambio (es idempotente).
 
-> **Importante:** Cambie la contraseña del usuario `admin` desde el panel de gestión de usuarios en la primera sesión.
+> **Importante:** Use credenciales seguras y únicas para el usuario administrador desde el primer arranque.
 
 ---
 
